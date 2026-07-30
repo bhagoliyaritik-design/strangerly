@@ -89,13 +89,8 @@ export default function VoiceChatWindow({
       }
 
  
-       // @ts-expect-error
-peerRef.current = new Peer({
-  initiator:
-    typeof socket?.id === "string" &&
-    typeof partnerId === "string"
-      ? socket.id < partnerId
-      : false,
+       peerRef.current = new Peer({
+  initiator: (socket?.id ?? "") < (partnerId ?? ""),
   trickle: false,
   stream,
       });
