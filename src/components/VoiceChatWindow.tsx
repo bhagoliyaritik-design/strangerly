@@ -88,7 +88,9 @@ export default function VoiceChatWindow({
         myAudioRef.current.play().catch(()=>{});
       }
 
-      peerRef.current = new Peer({
+ 
+       // @ts-expect-error
+peerRef.current = new Peer({
   initiator:
     typeof socket?.id === "string" &&
     typeof partnerId === "string"
