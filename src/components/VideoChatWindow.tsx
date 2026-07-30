@@ -20,7 +20,6 @@ export default function VideoChatWindow() {
   const remoteVideo = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<Peer.Instance | null>(null);
 
-  // Socket Connection & Listeners
   useEffect(() => {
     const s = io(SERVER_URL);
     setSocket(s);
@@ -58,7 +57,6 @@ export default function VideoChatWindow() {
   }, [refresh]);
 
   async function setupCall(initiatorVal: boolean, currentPartnerId: string, activeSocket: Socket) {
-    console.log("SETTING UP CALL. Initiator:", initiatorVal);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       if (myVideo.current) {
@@ -72,11 +70,11 @@ export default function VideoChatWindow() {
         trickle: false,
         stream,
         config: {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:global.stun.twilio.com:3478" } // <-- ?transport=udp hata diya
-  ]
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:global.stun.twilio.com" }
+          ]
         }
       });
 
@@ -91,7 +89,6 @@ export default function VideoChatWindow() {
       });
 
       peerRef.current.on("stream", (remoteStream: MediaStream) => {
-        console.log("REMOTE STREAM RECEIVED");
         if (remoteVideo.current) {
           remoteVideo.current.srcObject = remoteStream;
           remoteVideo.current.play().catch(() => {});
@@ -137,46 +134,55 @@ export default function VideoChatWindow() {
   }
 
   return (
-    <div className="max-w-6xl w-full flex flex-col md:flex-row items-stretch min-h-[520px] gap-7">
-      <div className="flex-1 flex flex-col items-center rounded-3xl bg-gradient-to-br from-[#172040] to-[#181d2f] shadow-2xl justify-center pb-5">
-        <div className="flex w-full h-auto justify-center gap-6 py-6 px-2 md:px-9">
+    <div className="w-full max-w-6xl mx-auto flex flex-col lg:flex-row items-center lg:items-stretch gap-4 p-2 sm:p-4">
+      {/* Main Video Box */}
+      <div className="w-full flex-1 flex flex-col items-center rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#172040] to-[#181d2f] shadow-2xl p-3 sm:p-5 justify-center">
+        
+        {/* Videos Container: Mobile par stack honge, Desktop par side-by-side */}
+        <div className="w-full flex flex-col sm:flex-row justify-center items-center gap-4 py-2">
           {/* Stranger Video */}
-          <div className="flex-1 rounded-2xl overflow-hidden flex flex-col items-center">
+          <div className="w-full sm:flex-1 rounded-2xl overflow-hidden flex flex-col items-center">
             <video ref={remoteVideo} autoPlay playsInline
-              className="rounded-2xl w-full max-w-sm h-[340px] md:h-[420px] bg-black object-cover border-2 border-fuchsia-400 shadow-lg transition-all"
-              style={{ aspectRatio: "4/3" }} />
-            <span className="font-bold text-md mt-2 text-fuchsia-300">Stranger</span>
+              className="rounded-2xl w-full max-w-[320px] sm:max-w-sm h-[240px] sm:h-[380px] bg-black object-cover border-2 border-fuchsia-400 shadow-lg"
+            />
+            <span className="font-bold text-sm sm:text-base mt-1 text-fuchsia-300">Stranger</span>
           </div>
+
           {/* User Video */}
-          <div className="flex-1 rounded-2xl overflow-hidden flex flex-col items-center">
+          <div className="w-full sm:flex-1 rounded-2xl overflow-hidden flex flex-col items-center">
             <video ref={myVideo} autoPlay playsInline
-              className="rounded-2xl w-full max-w-sm h-[340px] md:h-[420px] bg-black object-cover border-2 border-cyan-400 shadow-lg transition-all"
-              style={{ aspectRatio: "4/3" }} />
-            <span className="font-bold text-md mt-2 text-cyan-300">You</span>
+              className="rounded-2xl w-full max-w-[320px] sm:max-w-sm h-[240px] sm:h-[380px] bg-black object-cover border-2 border-cyan-400 shadow-lg"
+            />
+            <span className="font-bold text-sm sm:text-base mt-1 text-cyan-300">You</span>
           </div>
         </div>
-        <div className="flex w-full gap-4 justify-center px-4 mt-8">
+
+        {/* Action Buttons */}
+        <div className="w-full flex gap-3 justify-center px-2 mt-4">
           <button
-            className="flex-1 bg-green-400 hover:bg-green-500 active:scale-95 text-lg font-bold py-4 rounded-xl shadow focus:outline-none flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="flex-1 bg-green-400 hover:bg-green-500 active:scale-95 text-base sm:text-lg font-bold py-3 sm:py-4 rounded-xl shadow focus:outline-none flex items-center justify-center gap-2 transition-all cursor-pointer text-slate-900"
             onClick={skipStranger}
             disabled={status === "connecting" || status === "waiting" || connecting}
           >
-            <SkipForward size={22} /> Skip <span className="hidden md:inline ml-2 text-xs opacity-60">(Esc)</span>
+            <SkipForward size={20} /> Skip <span className="hidden sm:inline ml-1 text-xs opacity-70">(Esc)</span>
           </button>
           <button
-            className="flex-1 bg-black hover:bg-fuchsia-700/80 active:scale-95 text-white font-bold py-4 rounded-xl shadow border-2 border-zinc-900 focus:outline-none flex items-center justify-center gap-2 transition-all cursor-pointer"
+            className="flex-1 bg-black hover:bg-fuchsia-700/80 active:scale-95 text-white font-bold py-3 sm:py-4 rounded-xl shadow border-2 border-zinc-900 focus:outline-none flex items-center justify-center gap-2 transition-all cursor-pointer"
             onClick={endCall}
           >
-            <PhoneOff size={22} /> Stop
+            <PhoneOff size={20} /> Stop
           </button>
         </div>
-        {error && <div className="mt-4 text-red-400 text-base text-center font-semibold">{error}</div>}
+
+        {error && <div className="mt-3 text-red-400 text-sm sm:text-base text-center font-semibold">{error}</div>}
       </div>
-      <div className="md:block hidden w-[340px] rounded-3xl bg-gradient-to-br from-[#19293a]/95 to-[#151e27]/95 shadow-2xl pt-5 pb-8 px-6 border border-[#232a3d]/60">
-        <div className="mb-3 bg-[#192c3d] rounded-xl py-2 px-3 shadow border-b-2 border-cyan-700/20 font-semibold text-sm text-cyan-200">
+
+      {/* Sidebar Status Box (Responsive width) */}
+      <div className="w-full lg:w-[320px] rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#19293a]/95 to-[#151e27]/95 shadow-2xl py-4 px-4 sm:px-6 border border-[#232a3d]/60">
+        <div className="bg-[#192c3d] rounded-xl py-2 px-3 shadow border-b-2 border-cyan-700/20 font-semibold text-xs sm:text-sm text-cyan-200 text-center sm:text-left">
           You're now chatting with a stranger <span className="text-[#31e1bc] ml-1">IN</span> — say hi 👋
         </div>
-        <div className="text-center mt-4 text-slate-300 italic">
+        <div className="text-center mt-3 text-slate-300 italic text-sm sm:text-base">
           {status === "in-call"
             ? "Connected! Say hi."
             : status === "partner_left"
