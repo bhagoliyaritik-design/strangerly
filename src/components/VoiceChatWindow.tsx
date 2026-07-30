@@ -89,9 +89,9 @@ export default function VoiceChatWindow({
       }
 
       peerRef.current = new Peer({
-        initiator: !!(socket && socket.id < partnerId!), // Make lowest-socket the initiator (prevent peer init issue)
-        trickle: false,
-        stream,
+  initiator: Boolean(socket?.id && partnerId && socket.id < partnerId),
+  trickle: false,
+  stream,
       });
 
       peerRef.current.on("signal", (data: any) => {
