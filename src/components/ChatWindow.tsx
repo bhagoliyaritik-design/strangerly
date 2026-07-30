@@ -119,40 +119,40 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#10151e]/92 backdrop-blur">
-      <div className="w-full max-w-2xl rounded-2xl bg-[#181d29] mx-auto p-0 flex flex-col min-h-[600px] shadow-[0_0_80px_#00e6d955] border border-[#283449] relative"
-        style={{ boxShadow: "0 6px 48px 0 #0c2e3eAA" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#091526]/95 backdrop-blur-md p-2 sm:p-4">
+      <div className="w-full max-w-2xl rounded-2xl sm:rounded-3xl bg-[#131c2e] mx-auto p-0 flex flex-col h-[90vh] sm:h-[620px] shadow-2xl border border-[#233351] relative">
         
-        {/* Top info is optional, can keep like before */}
-        <div className="rounded-t-2xl">
-          <div className="p-2 px-7 bg-[#26333f] text-xs flex items-center rounded-t-2xl gap-2 font-semibold text-blue-100 border-b border-[#24455a]/60">
-            <span className="text-[#d5e7f3] tracking-wide flex items-center gap-2">
-              <span className="pr-1">🌐</span>Female only <span className="font-bold text-yellow-400 uppercase text-xs">Premium</span>
+        {/* Top Header */}
+        <div className="rounded-t-2xl sm:rounded-t-3xl flex-shrink-0">
+          <div className="p-2 sm:px-6 bg-[#1a263b] text-xs flex items-center justify-between rounded-t-2xl sm:rounded-t-3xl gap-2 font-semibold text-blue-100 border-b border-[#283959]">
+            <span className="text-cyan-200 tracking-wide flex items-center gap-2">
+              <span>🌐</span>Female only <span className="font-bold text-yellow-400 uppercase text-xs">PREMIUM</span>
             </span>
+            <button onClick={handleClose} className="text-slate-400 hover:text-white text-sm px-2 py-0.5">✕</button>
           </div>
           {(status === "chatting" || status === "partner_left") && (
-            <div className="w-full px-7 py-2 bg-cyan-950/70 border-b border-[#2c5a6d]/80 text-teal-200 text-sm font-bold tracking-wide shadow-[0_2px_14px_#2186a822]">
+            <div className="w-full px-4 sm:px-6 py-2 bg-cyan-950/80 border-b border-[#23435c] text-teal-200 text-xs sm:text-sm font-bold tracking-wide">
               {messages[0]?.text || "You're now chatting with a stranger!"}
             </div>
           )}
         </div>
 
-        {/* -- Chat messages area -- */}
-        <div className="flex-1 flex flex-col bg-transparent w-full py-3 overflow-hidden">
+        {/* Chat / Content Area */}
+        <div className="flex-1 flex flex-col bg-transparent w-full overflow-hidden relative">
           {(status === "idle" || status === "connecting" || status === "waiting") && (
-            <div className="flex-1 flex flex-col justify-center items-center px-8">
+            <div className="flex-1 flex flex-col justify-center items-center px-6 text-center">
               {status === "idle" && (
                 <>
-                  <div className="text-lg text-cyan-200 mb-3 mt-12 font-medium text-center">
+                  <div className="text-base sm:text-lg text-cyan-200 mb-3 font-medium">
                     Welcome! <br />
                     <span className="font-bold text-cyan-300">Strangerly's</span> anonymous text chat.
                   </div>
                   <button
-                    className="bg-gradient-to-tr from-cyan-400 to-fuchsia-500 hover:from-blue-400 hover:to-pink-400 shadow-xl text-lg px-12 py-3 rounded-xl font-bold text-white tracking-tight mt-1"
+                    className="bg-gradient-to-tr from-cyan-400 to-fuchsia-500 hover:from-blue-400 hover:to-pink-400 shadow-xl text-base sm:text-lg px-10 py-3 rounded-xl font-bold text-white tracking-tight mt-2 cursor-pointer"
                     onClick={startChat}>
                     Start Chat
                   </button>
-                  <button className="text-xs mt-7 opacity-60 underline" onClick={handleClose}>
+                  <button className="text-xs mt-6 text-slate-400 underline cursor-pointer" onClick={handleClose}>
                     Back to Homepage
                   </button>
                 </>
@@ -160,10 +160,10 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
               {(status === "connecting" || status === "waiting") && (
                 <>
                   <div className="w-10 h-10 rounded-full animate-pulse bg-gradient-to-tr from-cyan-400 to-indigo-700 mb-4"></div>
-                  <div className="text-cyan-100 text-lg font-semibold">
+                  <div className="text-cyan-100 text-base sm:text-lg font-semibold">
                     {status === "connecting" ? "Connecting..." : "Looking for another stranger..."}
                   </div>
-                  <button className="mt-8 bg-gray-800 px-8 py-2 rounded-xl text-slate-200 font-semibold shadow hover:bg-red-500/80 transition" onClick={handleClose}>
+                  <button className="mt-6 bg-slate-800 px-6 py-2 rounded-xl text-slate-200 font-semibold shadow hover:bg-red-500/80 transition cursor-pointer" onClick={handleClose}>
                     Cancel
                   </button>
                 </>
@@ -172,11 +172,11 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
           )}
 
           {(status === "chatting" || status === "partner_left") && (
-            <>
-              {/* Messages */}
-              <div ref={chatRef} className="flex-1 overflow-y-auto w-full px-2 py-4 flex flex-col gap-2 min-h-[240px] max-h-[380px]">
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
+              {/* Messages Scroll Box */}
+              <div ref={chatRef} className="flex-1 overflow-y-auto w-full px-3 py-3 flex flex-col gap-2">
                 {messages.slice(1).length === 0 && (
-                  <div className="text-center text-slate-400 italic py-5">Connected! Say hi.</div>
+                  <div className="text-center text-slate-400 italic py-4 text-sm">Connected! Say hi.</div>
                 )}
                 {messages.slice(1).map((msg, i) => (
                   <div
@@ -191,58 +191,55 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
                     <div
                       className={
                         msg.sender === "me"
-                          ? "bg-cyan-400/90 text-gray-900 px-5 py-2 rounded-2xl rounded-tr-md shadow-lg max-w-xs break-words font-medium"
+                          ? "bg-cyan-400 text-slate-950 px-4 py-2 rounded-2xl rounded-tr-md shadow max-w-[80%] break-words font-medium text-sm"
                           : msg.sender === "partner"
-                            ? "bg-[#212a34]/90 text-cyan-100 px-5 py-2 rounded-2xl rounded-tl-md shadow max-w-xs break-words font-medium"
-                            : "text-xs text-cyan-300 bg-transparent font-semibold mt-3 text-center w-full"
+                            ? "bg-[#1c293d] text-cyan-100 px-4 py-2 rounded-2xl rounded-tl-md shadow max-w-[80%] break-words font-medium text-sm border border-[#2b3e5d]"
+                            : "text-xs text-cyan-300 bg-transparent font-semibold my-1 text-center w-full"
                       }>
                       {msg.text}
                     </div>
                   </div>
                 ))}
               </div>
-              {/* ---- Bottom input fixed+responsive ---- */}
-              <div className="fixed bottom-0 left-0 w-full z-40 bg-gradient-to-t from-[#1b2432]/80 to-[#191d2d]/60 px-2 py-2 md:relative md:bg-transparent md:p-0">
-                <div className="flex w-full gap-2 items-end">
+
+              {/* Bottom Actions & Input Container (Properly stacked, non-overlapping) */}
+              <div className="flex-shrink-0 bg-[#0e1624] border-t border-[#233351] p-2.5 sm:p-3 flex flex-col gap-2">
+                <div className="flex w-full gap-2">
                   <button
-                    className="bg-green-400 hover:bg-green-500 transition font-bold text-[#153233] px-4 py-2 rounded-xl shadow-lg active:scale-95 text-base flex-1"
+                    className="flex-1 bg-green-500 hover:bg-green-600 transition font-bold text-slate-950 py-2.5 px-3 rounded-xl shadow active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1 cursor-pointer"
                     onClick={skipStranger}
-                    style={{ minWidth: 85 }}
                   >
-                    Skip
-                    <span className="text-xs block font-normal mt-1 opacity-60">(Esc)</span>
+                    Skip <span className="text-[10px] opacity-70 hidden sm:inline">(Esc)</span>
                   </button>
                   <button
-                    className="bg-neutral-950 hover:bg-red-600/80 transition text-white px-4 py-2 rounded-xl shadow-lg font-bold text-base flex-1 border-2 border-[#242a3a]/70"
+                    className="flex-1 bg-slate-900 hover:bg-red-600/80 transition text-white py-2.5 px-3 rounded-xl shadow font-bold text-xs sm:text-sm border border-slate-700 flex items-center justify-center gap-1 cursor-pointer"
                     onClick={handleClose}
-                    style={{ minWidth: 80 }}
                   >
-                    Leave
-                    <span className="text-xs block opacity-40 font-normal mt-1">end chat</span>
+                    Leave <span className="text-[10px] opacity-60 hidden sm:inline">chat</span>
                   </button>
-                  <form
-                    className="flex flex-1 gap-2 items-end"
-                    onSubmit={e => { e.preventDefault(); sendMessage(); }}>
-                    <input
-                      type="text"
-                      className="flex-1 px-4 py-2 rounded-xl bg-[#132130]/80 text-cyan-200 border border-[#2ea5b8]/10 focus:outline-none font-semibold placeholder:text-slate-400 shadow"
-                      value={input}
-                      autoFocus
-                      onChange={e => setInput(e.target.value)}
-                      placeholder="Type a message..."
-                      disabled={status !== "chatting"}
-                      maxLength={1000}
-                    />
-                    <button
-                      type="submit"
-                      className="bg-cyan-400/90 hover:bg-cyan-300 transition rounded-xl w-12 h-12 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ml-1 shadow-lg"
-                      disabled={input.trim() === "" || status !== "chatting"}>
-                      <Send size={25} className="mx-auto text-[#181d29]" />
-                    </button>
-                  </form>
                 </div>
+
+                <form
+                  className="flex w-full gap-2 items-center"
+                  onSubmit={e => { e.preventDefault(); sendMessage(); }}>
+                  <input
+                    type="text"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#172338] text-cyan-100 border border-[#2a3c5c] focus:outline-none text-sm placeholder:text-slate-400 shadow"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    placeholder="Type a message..."
+                    disabled={status !== "chatting"}
+                    maxLength={1000}
+                  />
+                  <button
+                    type="submit"
+                    className="bg-cyan-400 hover:bg-cyan-300 transition rounded-xl w-11 h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow cursor-pointer flex-shrink-0"
+                    disabled={input.trim() === "" || status !== "chatting"}>
+                    <Send size={20} className="text-[#131c2e]" />
+                  </button>
+                </form>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
