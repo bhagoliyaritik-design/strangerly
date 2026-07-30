@@ -1,8 +1,7 @@
 "use client";
 import React from "react";
 import { Mic, Video, MessageCircle } from 'lucide-react';
-import type { ChatMode } from "@/types";
-
+import type { ChatMode } from "../types";
 const modes = [
   {
     key: "text" as ChatMode,
