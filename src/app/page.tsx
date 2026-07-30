@@ -8,7 +8,17 @@ import HowItWorks from "@/components/HowItWorks";
 import SafetySection from "@/components/SafetySection";
 import { useRouter } from "next/navigation";
 
-function LandingHero({ onStart, mode, setMode }: { onStart: () => void, mode: string, setMode: (m: string) => void }) {
+type ChatMode = "text" | "voice" | "video";
+
+function LandingHero({
+  onStart,
+  mode,
+  setMode,
+}: {
+  onStart: () => void;
+  mode: ChatMode;
+  setMode: (m: ChatMode) => void;
+}) {
   return (
     <section className="w-full flex min-h-[77vh] items-center justify-center bg-gradient-to-br from-[#0c1b2e] via-[#121832] to-[#191f2e] pb-8 pt-8">
       <div className="
@@ -23,13 +33,16 @@ function LandingHero({ onStart, mode, setMode }: { onStart: () => void, mode: st
             </span>
             <span className="font-extrabold text-[2rem] tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-400">Strangerly</span>
           </div>
-          <h1 className="text-center text-white text-3xl md:text-4xl font-bold tracking-tight mt-2 mb-0">Chat with <span className="bg-gradient-to-r from-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">Strangers</span></h1>
+          <h1 className="text-center text-white text-3xl md:text-4xl font-bold tracking-tight mt-2 mb-0">
+            Chat with <span className="bg-gradient-to-r from-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">Strangers</span>
+          </h1>
           <div className="flex items-center gap-2 mt-2 mb-4">
             <span className="h-2.5 w-2.5 rounded-full bg-green-400 animate-pulse shadow"></span>
             <span className="text-[#38fae7] font-bold text-base">7,402</span>
             <span className="text-slate-400 text-sm">people online now</span>
           </div>
         </div>
+        {/* Modes */}
         <div className="flex flex-wrap gap-5 p-2 w-full items-stretch justify-center mb-3 mt-5">
           <LandingModeBtn icon={<MessageCircle size={25} />} label="Text Chat" sub="Instant, safe messages" active={mode === "text"} onClick={() => setMode("text")} />
           <LandingModeBtn icon={<Mic size={25} />} label="Voice Chat" sub="No signup, crystal clear" active={mode === "voice"} onClick={() => setMode("voice")} />
@@ -57,7 +70,11 @@ function LandingHero({ onStart, mode, setMode }: { onStart: () => void, mode: st
   );
 }
 
-function LandingModeBtn({ icon, label, sub, active, onClick }: { icon: React.ReactNode, label: string, sub: string, active: boolean, onClick: () => void }) {
+function LandingModeBtn({
+  icon, label, sub, active, onClick
+}: {
+  icon: React.ReactNode, label: string, sub: string, active: boolean, onClick: () => void
+}) {
   return (
     <button
       className={`
@@ -81,14 +98,14 @@ function LandingModeBtn({ icon, label, sub, active, onClick }: { icon: React.Rea
 
 export default function HomePage() {
   const [chatOpen, setChatOpen] = useState(false);
-  const [mode, setMode] = useState<"text" | "voice" | "video">("text");
+  const [mode, setMode] = useState<ChatMode>("text");
   const router = useRouter();
 
   const handleStart = () => {
     if (mode === "voice") {
       router.push("/voice");
     } else if (mode === "video") {
-      router.push("/video");            // ⭐ NOTE: Redirect on video!!
+      router.push("/video");
     } else {
       setChatOpen(true);
     }
@@ -118,6 +135,7 @@ export default function HomePage() {
       </section>
 
       <Footer />
+
       {chatOpen && (
         <ChatWindow onLeave={() => setChatOpen(false)} />
       )}
