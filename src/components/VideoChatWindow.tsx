@@ -75,10 +75,10 @@ export default function VideoChatWindow() {
         myVideo.current.muted = true;
         myVideo.current.play().catch(() => {});
       }
-      peerRef.current = new Peer({
-        initiator: !!(socket && socket.id < (partnerId ?? '')),
-        trickle: false,
-        stream,
+     peerRef.current = new Peer({
+  initiator: Boolean(socket?.id && partnerId && socket.id < partnerId),
+  trickle: false,
+  stream,
         config: {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
