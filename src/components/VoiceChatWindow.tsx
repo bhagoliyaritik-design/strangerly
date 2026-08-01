@@ -1,8 +1,8 @@
 "use client";
-import { Mic, MicOff, PhoneOff, RefreshCw, Volume2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import Peer from "simple-peer";
+import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import Peer from "simple-peer";
+import { Mic, MicOff, PhoneOff, RefreshCw, Volume2 } from "lucide-react";
 
 const SERVER_URL = "https://strangerly-server.onrender.com";
 
@@ -27,18 +27,6 @@ export default function VoiceChatWindow({
   const myAudioRef = useRef<HTMLAudioElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
-  // Fallback timer so UI never gets stuck if server is slow/offline
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (status === "waiting" || status === "connecting" || status === "calling") {
-        console.log("Forcing mock connection due to server delay...");
-        setStatus("in-call");
-      }
-    }, 4000); // 4 seconds max wait
-
-    return () => clearTimeout(fallbackTimer);
-  }, [status]);
-
   useEffect(() => {
     const s = io(SERVER_URL);
     setSocket(s);
@@ -54,7 +42,7 @@ export default function VoiceChatWindow({
       setStatus("calling");
       setRoomId(roomId);
       setPartnerId(partnerId);
-      setTimeout(setupCall, 400);
+      setupCall(partnerId, s);
     });
 
     s.on("partner_left", () => {
@@ -68,7 +56,11 @@ export default function VoiceChatWindow({
       }, 2000);
     });
 
-    s.on("voice-signal", handleVoiceSignal);
+    s.on("voice-signal", ({ from, data }) => {
+      if (peerRef.current) {
+        peerRef.current.signal(data);
+      }
+    });
 
     return () => {
       destroyPeer();
@@ -86,12 +78,7 @@ export default function VoiceChatWindow({
     return () => clearInterval(timer);
   }, [status]);
 
-  function handleVoiceSignal({ from, data }: any) {
-    if (!peerRef.current) return;
-    peerRef.current.signal(data);
-  }
-
-  async function setupCall() {
+  async function setupCall(targetPartnerId: string, socketInstance: Socket) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
@@ -99,11 +86,10 @@ export default function VoiceChatWindow({
       if (myAudioRef.current) {
         myAudioRef.current.srcObject = stream;
         myAudioRef.current.muted = true;
-        myAudioRef.current.play().catch(() => {});
       }
 
-      peerRef.current = new Peer({
-        initiator: (socket?.id ?? "") < (partnerId ?? ""),
+      const peer = new Peer({
+        initiator: socketInstance.id < targetPartnerId,
         trickle: false,
         stream,
         config: {
@@ -114,35 +100,34 @@ export default function VoiceChatWindow({
         },
       });
 
-      peerRef.current.on("signal", (data: any) => {
-        if (partnerId) {
-          socket?.emit("voice-signal", { to: partnerId, data });
-        }
+      peer.on("signal", (data) => {
+        socketInstance.emit("voice-signal", { to: targetPartnerId, data });
       });
 
-      peerRef.current.on("connect", () => {
+      peer.on("connect", () => {
         setStatus("in-call");
       });
 
-      peerRef.current.on("stream", (remoteStream: MediaStream) => {
+      peer.on("stream", (remoteStream) => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.play().catch(() => {});
+          remoteAudioRef.current.play().catch((e) => console.log("Audio play error:", e));
         }
         setStatus("in-call");
       });
 
-      peerRef.current.on("close", () => {
+      peer.on("close", () => {
         setStatus("partner_left");
       });
 
-      peerRef.current.on("error", (err: any) => {
-        console.log("Peer error", err);
-        setStatus("in-call"); // Fallback to in-call on error
+      peer.on("error", (err) => {
+        console.error("Peer error:", err);
+        setStatus("partner_left");
       });
+
+      peerRef.current = peer;
     } catch (err) {
-      setError("Microphone permission required.");
-      setStatus("in-call"); // Fallback so UI opens even if mic blocks
+      setError("Mic access denied or error starting call.");
     }
   }
 
@@ -197,7 +182,7 @@ export default function VoiceChatWindow({
           {status === "connecting" && <span className="text-cyan-300 animate-pulse">Connecting to server…</span>}
           {status === "waiting" && <span className="text-cyan-200 animate-pulse">Finding a random stranger…</span>}
           {status === "calling" && <span className="text-blue-300 animate-pulse">Establishing secure voice call…</span>}
-          {status === "partner_left" && <span className="text-pink-400 font-semibold">Stranger left the chat. Reconnecting...</span>}
+          {status === "partner_left" && <span className="text-pink-400 font-semibold">Stranger left. Finding new...</span>}
           {error && <div className="text-red-400 text-xs mt-1">{error}</div>}
         </div>
 
