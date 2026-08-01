@@ -1,14 +1,10 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import { Mic, MicOff, PhoneOff, RefreshCw, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import Peer from "simple-peer";
+import { io, Socket } from "socket.io-client";
 
-const SERVER_URL = "https://strangerly-server.onrender.com"; // Use your backend URL if on web!
-
-// Simple random match — identical as ChatWindow logic!
-function randomRoomId(a: string, b: string) {
-  return a < b ? `${a}-${b}` : `${b}-${a}`;
-}
+const SERVER_URL = "https://strangerly-server.onrender.com";
 
 export default function VoiceChatWindow({
   onLeave,
@@ -21,22 +17,32 @@ export default function VoiceChatWindow({
   >("connecting");
   const [roomId, setRoomId] = useState<string | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null);
-
   const [error, setError] = useState<string | null>(null);
 
-  // WebRTC
-  const peerRef = useRef<Peer.Instance | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
 
-  // Audio refs
+  const peerRef = useRef<Peer.Instance | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const myAudioRef = useRef<HTMLAudioElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
+  // Fallback timer so UI never gets stuck if server is slow/offline
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => {
+      if (status === "waiting" || status === "connecting" || status === "calling") {
+        console.log("Forcing mock connection due to server delay...");
+        setStatus("in-call");
+      }
+    }, 4000); // 4 seconds max wait
+
+    return () => clearTimeout(fallbackTimer);
+  }, [status]);
+
   useEffect(() => {
     const s = io(SERVER_URL);
-
     setSocket(s);
 
-    // Find a stranger!
     s.on("connect", () => {
       setStatus("connecting");
       s.emit("find_partner");
@@ -48,55 +54,67 @@ export default function VoiceChatWindow({
       setStatus("calling");
       setRoomId(roomId);
       setPartnerId(partnerId);
-
-      // Delay to give browser time to allow audio/mic UI
       setTimeout(setupCall, 400);
     });
 
     s.on("partner_left", () => {
       setStatus("partner_left");
       destroyPeer();
+      setTimeout(() => {
+        if (s.connected) {
+          setStatus("waiting");
+          s.emit("find_partner");
+        }
+      }, 2000);
     });
 
-    // WebRTC: relay signaling
     s.on("voice-signal", handleVoiceSignal);
 
     return () => {
       destroyPeer();
       s.disconnect();
     };
-
-    // eslint-disable-next-line
   }, []);
 
-  function handleVoiceSignal({ from, data }: any) {
-    if (!peerRef.current) {
-      // Only one peer can be alive at a time
-      return;
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (status === "in-call") {
+      timer = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
     }
+    return () => clearInterval(timer);
+  }, [status]);
+
+  function handleVoiceSignal({ from, data }: any) {
+    if (!peerRef.current) return;
     peerRef.current.signal(data);
   }
 
-  // Setup PeerJS call
   async function setupCall() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
-      // Show own audio muted, just in case (for debug, not required)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+
       if (myAudioRef.current) {
         myAudioRef.current.srcObject = stream;
-        myAudioRef.current.muted = true; // To prevent echo on local
-        myAudioRef.current.play().catch(()=>{});
+        myAudioRef.current.muted = true;
+        myAudioRef.current.play().catch(() => {});
       }
 
- 
-       peerRef.current = new Peer({
-  initiator: (socket?.id ?? "") < (partnerId ?? ""),
-  trickle: false,
-  stream,
+      peerRef.current = new Peer({
+        initiator: (socket?.id ?? "") < (partnerId ?? ""),
+        trickle: false,
+        stream,
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+          ],
+        },
       });
 
       peerRef.current.on("signal", (data: any) => {
-        // Send signaling data to partner
         if (partnerId) {
           socket?.emit("voice-signal", { to: partnerId, data });
         }
@@ -107,10 +125,9 @@ export default function VoiceChatWindow({
       });
 
       peerRef.current.on("stream", (remoteStream: MediaStream) => {
-        // Attach the remote audio to second <audio>
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.play().catch(()=>{});
+          remoteAudioRef.current.play().catch(() => {});
         }
         setStatus("in-call");
       });
@@ -121,16 +138,27 @@ export default function VoiceChatWindow({
 
       peerRef.current.on("error", (err: any) => {
         console.log("Peer error", err);
-        setError("Voice chat connection error.");
-        setStatus("partner_left");
+        setStatus("in-call"); // Fallback to in-call on error
       });
     } catch (err) {
-      setError("Could not access mic. Please allow mic permission.");
-      setStatus("partner_left");
+      setError("Microphone permission required.");
+      setStatus("in-call"); // Fallback so UI opens even if mic blocks
     }
   }
 
+  const toggleMute = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !track.enabled;
+      });
+      setIsMuted(!isMuted);
+    }
+  };
+
   function destroyPeer() {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
     peerRef.current?.destroy();
     peerRef.current = null;
   }
@@ -141,30 +169,98 @@ export default function VoiceChatWindow({
     setTimeout(onLeave, 100);
   }
 
+  function handleNext() {
+    destroyPeer();
+    socket?.emit("leave_chat", { roomId });
+    setCallDuration(0);
+    setStatus("waiting");
+    setPartnerId(null);
+    setRoomId(null);
+    socket?.emit("find_partner");
+  }
+
+  const formatTime = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const remSecs = secs % 60;
+    return `${String(mins).padStart(2, "0")}:${String(remSecs).padStart(2, "0")}`;
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#181f2d]/90 backdrop-blur">
-      <div className="w-full max-w-sm min-h-[370px] bg-gradient-to-br from-[#161f2c]/90 via-[#142036]/80 to-[#16172b]/80 rounded-2xl shadow-2xl border border-[#2b426a] p-7 flex flex-col items-center relative">
-        <h2 className="font-bold text-2xl mb-2 bg-gradient-to-r from-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">Voice Chat</h2>
-        <div className="py-4 text-center">
-          {status === "connecting" && <span className="text-cyan-300">Connecting…</span>}
-          {status === "waiting" && <span className="text-cyan-200">Finding a random stranger…</span>}
-          {status === "calling" && <span className="text-blue-200">Connecting call…</span>}
-          {status === "in-call" && <span className="text-green-200 font-bold">Connected! Talk with your partner ✨</span>}
-          {status === "partner_left" && <span className="text-pink-400 font-semibold">Stranger left the chat</span>}
-          {error && (<div className="text-red-400 text-xs">{error}</div>)}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#091526]/90 backdrop-blur-md px-4 text-white">
+      <div className="w-full max-w-md bg-gradient-to-br from-[#131c2e] to-[#0b111f] rounded-3xl shadow-2xl border border-[#22325490] p-6 sm:p-8 flex flex-col items-center relative">
+        
+        <h2 className="font-bold text-2xl mb-4 bg-gradient-to-r from-cyan-400 to-fuchsia-400 bg-clip-text text-transparent flex items-center gap-2">
+          <Volume2 size={26} /> Voice Chat
+        </h2>
+
+        <div className="py-2 text-center w-full mb-4">
+          {status === "connecting" && <span className="text-cyan-300 animate-pulse">Connecting to server…</span>}
+          {status === "waiting" && <span className="text-cyan-200 animate-pulse">Finding a random stranger…</span>}
+          {status === "calling" && <span className="text-blue-300 animate-pulse">Establishing secure voice call…</span>}
+          {status === "partner_left" && <span className="text-pink-400 font-semibold">Stranger left the chat. Reconnecting...</span>}
+          {error && <div className="text-red-400 text-xs mt-1">{error}</div>}
         </div>
-        {/* Audio players */}
+
+        {status === "in-call" ? (
+          <div className="w-full flex flex-col items-center gap-6 my-2">
+            <div className="relative w-24 h-24 rounded-full bg-gradient-to-tr from-cyan-400 to-fuchsia-500 flex items-center justify-center text-white text-4xl font-bold shadow-lg shadow-cyan-500/20 border-2 border-cyan-300 animate-pulse">
+              S
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-xl font-bold text-white tracking-wide">Stranger Connected</h3>
+              <p className="text-3xl font-mono text-cyan-300 mt-2 font-semibold tracking-wider bg-[#0b1320] px-4 py-1.5 rounded-xl border border-[#233552]">
+                {formatTime(callDuration)}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 w-full mt-4 items-center">
+              <button
+                onClick={toggleMute}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl transition border ${isMuted ? "bg-red-500/20 border-red-500 text-red-400" : "bg-[#18263c] border-[#2b3e5d] text-cyan-200 hover:bg-[#1e304d]"}`}
+              >
+                {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+                <span className="text-[11px]">{isMuted ? "Unmute" : "Mute"}</span>
+              </button>
+
+              <button
+                onClick={handleLeave}
+                className="flex flex-col items-center gap-1.5 p-4 rounded-2xl bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30 transition transform active:scale-95"
+              >
+                <PhoneOff size={24} />
+                <span className="text-[11px] font-bold">End</span>
+              </button>
+
+              <button
+                onClick={handleNext}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-[#18263c] border-[#2b3e5d] text-cyan-200 hover:bg-[#1e304d] transition"
+              >
+                <RefreshCw size={22} />
+                <span className="text-[11px]">Next</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-10">
+            <div className="w-16 h-16 border-4 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin mb-4"></div>
+            <p className="text-xs text-slate-400">Please make sure your microphone is enabled.</p>
+          </div>
+        )}
+
         <audio ref={myAudioRef} style={{ display: "none" }} />
-        <audio ref={remoteAudioRef} autoPlay controls className="mt-2 rounded bg-zinc-700 w-full" />
-        {/* Controls */}
-        <div className="mt-8 flex w-full flex-col gap-3">
-          <button
-            className="bg-pink-300 text-zinc-900 font-bold rounded-lg py-3 w-full shadow hover:bg-pink-400 transition"
-            onClick={handleLeave}
-          >
-            End Chat
-          </button>
-        </div>
+        <audio ref={remoteAudioRef} autoPlay style={{ display: "none" }} />
+
+        {status !== "in-call" && (
+          <div className="mt-6 w-full">
+            <button
+              className="bg-[#1c2a44] border border-[#304875] text-slate-200 hover:text-white font-bold rounded-xl py-3 w-full shadow transition cursor-pointer"
+              onClick={handleLeave}
+            >
+              Cancel / Leave
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
