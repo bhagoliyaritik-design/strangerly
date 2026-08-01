@@ -88,8 +88,10 @@ export default function VoiceChatWindow({
         myAudioRef.current.muted = true;
       }
 
+      const socketId = socketInstance.id ?? "";
+
       const peer = new Peer({
-        initiator: socketInstance.id < targetPartnerId,
+        initiator: socketId < targetPartnerId,
         trickle: false,
         stream,
         config: {
