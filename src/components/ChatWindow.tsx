@@ -1,25 +1,32 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import { Send, Lock, Crown, X } from "lucide-react";
+import { Send, Lock, Crown, X, CornerUpLeft, Smile } from "lucide-react";
 
 const SERVER_URL = "https://strangerly-server.onrender.com";
 
 type MessageObj = {
+  id: string;
   sender: "me" | "partner" | "system";
   text: string;
+  replyTo?: string;
+  reactions: { [emoji: string]: number }; // e.g. { "❤️": 1, "😂": 2 }
 };
 
 export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [status, setStatus] = useState<"idle" | "connecting" | "waiting" | "chatting" | "partner_left">("idle");
   const [messages, setMessages] = useState<MessageObj[]>([]);
   const [input, setInput] = useState("");
   const [roomId, setRoomId] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<"1h" | "3h" | "1d">("3h");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [activeEmojiMenu, setActiveEmojiMenu] = useState<string | null>(null); // Kis message par emoji popup khula hai
 
   const chatRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  const EMOJI_LIST = ["❤️", "😂", "😮", "😢", "😡", "👍", "👎", "🔥", "🎉"];
 
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
@@ -27,100 +34,158 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
 
   useEffect(() => {
     const s = io(SERVER_URL, { autoConnect: false });
-    setSocket(s);
+    socketRef.current = s;
+
+    s.on("connect", () => {
+      console.log("Connected to server");
+    });
+
+    s.on("waiting", () => {
+      setStatus("waiting");
+    });
+
+    s.on("partner_found", (data: { roomId: string, partnerId: string }) => {
+      setStatus("chatting");
+      setRoomId(data.roomId);
+      setMessages([
+        { id: "sys-0", sender: "system", text: "You're now chatting with a stranger 👋 — say hi 👋", reactions: {} }
+      ]);
+      setReplyingTo(null);
+      setActiveEmojiMenu(null);
+    });
+
+    s.on("chat_message", ({ id, message, replyTo }: { id?: string, message: string, replyTo?: string }) => {
+      const msgId = id || Math.random().toString(36).substr(2, 9);
+      setMessages(m => [...m, { id: msgId, sender: "partner", text: message, replyTo, reactions: {} }]);
+    });
+
+    // Reaction receive hone par update karein
+    s.on("message_reaction", ({ messageId, emoji }: { messageId: string, emoji: string }) => {
+      setMessages(m => m.map(msg => {
+        if (msg.id === messageId) {
+          const updatedReactions = { ...msg.reactions };
+          updatedReactions[emoji] = (updatedReactions[emoji] || 0) + 1;
+          return { ...msg, reactions: updatedReactions };
+        }
+        return msg;
+      }));
+    });
+
+    s.on("partner_left", () => {
+      setStatus("partner_left");
+      setMessages(m => [...m, { id: Math.random().toString(36), sender: "system", text: "Stranger left the chat.", reactions: {} }]);
+      setReplyingTo(null);
+      setActiveEmojiMenu(null);
+      
+      setTimeout(() => {
+        if (socketRef.current) {
+          setStatus("waiting");
+          setRoomId(null);
+          setMessages([]);
+          socketRef.current.emit("find_partner");
+        }
+      }, 1500);
+    });
+
+    s.on("disconnect", () => {
+      setStatus("idle");
+      setMessages([{ id: Math.random().toString(36), sender: "system", text: "Chat disconnected.", reactions: {} }]);
+      setRoomId(null);
+      setReplyingTo(null);
+      setActiveEmojiMenu(null);
+    });
 
     return () => {
       s.disconnect();
     };
   }, []);
 
-  const fullReset = () => {
+  const startChat = () => {
+    const s = socketRef.current;
+    if (!s) return;
+
+    setStatus("waiting");
+    setMessages([]);
+    setInput("");
+    setRoomId(null);
+    setReplyingTo(null);
+    setActiveEmojiMenu(null);
+
+    if (!s.connected) {
+      s.connect();
+    }
+    s.emit("find_partner");
+  };
+
+  const sendMessage = () => {
+    if (input.trim() === "" || !roomId || !socketRef.current) return;
+    
+    const msgId = Math.random().toString(36).substr(2, 9);
+    socketRef.current.emit("chat_message", { 
+      id: msgId,
+      roomId, 
+      message: input, 
+      replyTo: replyingTo 
+    });
+
+    setMessages(m => [...m, { id: msgId, sender: "me", text: input, replyTo: replyingTo || undefined, reactions: {} }]);
+    setInput("");
+    setReplyingTo(null);
+  };
+
+  const addReaction = (msgId: string, emoji: string) => {
+    // Local state update
+    setMessages(m => m.map(msg => {
+      if (msg.id === msgId) {
+        const updatedReactions = { ...msg.reactions };
+        updatedReactions[emoji] = (updatedReactions[emoji] || 0) + 1;
+        return { ...msg, reactions: updatedReactions };
+      }
+      return msg;
+    }));
+
+    // Server ko emit karein taaki samne wale ko bhi dikhe
+    if (socketRef.current && roomId) {
+      socketRef.current.emit("message_reaction", { roomId, messageId: msgId, emoji });
+    }
+    setActiveEmojiMenu(null);
+  };
+
+  const skipStranger = () => {
+    const s = socketRef.current;
+    if (!s) return;
+
+    if (roomId) {
+      s.emit("leave_chat", { roomId });
+    }
+
+    setStatus("waiting");
+    setRoomId(null);
+    setMessages([]);
+    setInput("");
+    setReplyingTo(null);
+    setActiveEmojiMenu(null);
+
+    s.emit("find_partner");
+  };
+
+  const handleClose = () => {
+    const s = socketRef.current;
+    if (roomId && s) {
+      s.emit("leave_chat", { roomId });
+    }
+    if (s) {
+      s.disconnect();
+    }
     setStatus("idle");
     setMessages([]);
     setInput("");
     setRoomId(null);
-  };
-
-  const startChat = () => {
-    if (!socket) return;
-
-    setStatus("connecting");
-    setMessages([]);
-    setInput("");
-    setRoomId(null);
-
-    socket.off("waiting");
-    socket.off("partner_found");
-    socket.off("chat_message");
-    socket.off("partner_left");
-    socket.off("connect");
-    socket.off("disconnect");
-
-    socket.connect();
-
-    socket.on("connect", () => {
-      setStatus("connecting");
-      socket.emit("find_partner");
-    });
-
-    socket.on("waiting", () => {
-      setStatus("waiting");
-    });
-
-    socket.on("partner_found", (data: { roomId: string, partnerId: string }) => {
-      setStatus("chatting");
-      setRoomId(data.roomId);
-      setMessages([
-        { sender: "system", text: "You're now chatting with a stranger 👋 — say hi 👋" }
-      ]);
-    });
-
-    socket.on("chat_message", ({ message }) => {
-      setMessages(m => [...m, { sender: "partner", text: message }]);
-    });
-
-    socket.on("partner_left", () => {
-      setStatus("partner_left");
-      setMessages(m => [...m, { sender: "system", text: "Stranger left the chat." }]);
-    });
-
-    socket.on("disconnect", () => {
-      setStatus("idle");
-      setMessages([{ sender: "system", text: "Chat disconnected." }]);
-      setRoomId(null);
-    });
-  };
-
-  const sendMessage = () => {
-    if (input.trim() === "" || !roomId || !socket) return;
-    socket.emit("chat_message", { roomId, message: input });
-    setMessages(m => [...m, { sender: "me", text: input }]);
-    setInput("");
-  };
-
-  const skipStranger = () => {
-    if (roomId && socket) {
-      socket.emit("leave_chat", { roomId });
-      socket.disconnect();
-    }
-    setTimeout(() => {
-      fullReset();
-      setTimeout(() => {
-        startChat();
-      }, 300);
-    }, 100);
-  };
-
-  const handleClose = () => {
-    if (roomId && socket) {
-      socket.emit("leave_chat", { roomId });
-      socket.disconnect();
-    }
-    fullReset();
+    setReplyingTo(null);
+    setActiveEmojiMenu(null);
     if (typeof onLeave === "function") onLeave();
   };
 
-  // --- RAZORPAY PAYMENT FUNCTION ---
   const handleRazorpayPayment = () => {
     const plansData = {
       "1h": { amount: 199 * 100, name: "1 Hour Premium Pass" },
@@ -153,7 +218,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
     } else {
-      alert("Razorpay SDK script is missing in layout. Ensure checkout.js is included.");
+      alert("Razorpay SDK script is missing in layout.");
     }
   };
 
@@ -163,7 +228,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
         
         {/* Top Header */}
         <div className="rounded-t-2xl sm:rounded-t-3xl flex-shrink-0">
-          <div className="p-2 sm:px-6 bg-[#1a263b] text-xs flex items-center justify-between rounded-t-2xl sm:rounded-t-3xl gap-2 font-semibold text-blue-100 border-b border-[#283959]">
+          <div className="p-2 sm:px-6 bg-[#1a263b] text-xs flex items-center justify-between rounded-t-2xl sm:rounded-3xl gap-2 font-semibold text-blue-100 border-b border-[#283959]">
             <button 
               onClick={() => setShowPaywall(true)}
               className="flex items-center gap-1.5 bg-[#141d2e] hover:bg-[#1f2d45] border border-[#2d4368] px-3 py-1 rounded-full cursor-pointer transition shadow"
@@ -184,7 +249,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
           )}
         </div>
 
-        {/* Chat / Content Area */}
+        {/* Content Area */}
         <div className="flex-1 flex flex-col bg-transparent w-full overflow-hidden relative">
           {(status === "idle" || status === "connecting" || status === "waiting") && (
             <div className="flex-1 flex flex-col justify-center items-center px-6 text-center">
@@ -220,36 +285,113 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
 
           {(status === "chatting" || status === "partner_left") && (
             <div className="flex-1 flex flex-col h-full overflow-hidden">
-              <div ref={chatRef} className="flex-1 overflow-y-auto w-full px-3 py-3 flex flex-col gap-2">
+              <div ref={chatRef} className="flex-1 overflow-y-auto w-full px-3 py-3 flex flex-col gap-3">
                 {messages.slice(1).length === 0 && (
                   <div className="text-center text-slate-400 italic py-4 text-sm">Connected! Say hi.</div>
                 )}
-                {messages.slice(1).map((msg, i) => (
+                {messages.slice(1).map((msg) => (
                   <div
-                    key={i}
+                    key={msg.id}
                     className={
                       msg.sender === "me"
-                        ? "flex w-full justify-end"
+                        ? "flex w-full justify-end group relative"
                         : msg.sender === "partner"
-                          ? "flex w-full justify-start"
+                          ? "flex w-full justify-start group relative"
                           : "flex w-full justify-center"
-                    }>
-                    <div
-                      className={
-                        msg.sender === "me"
-                          ? "bg-cyan-400 text-slate-950 px-4 py-2 rounded-2xl rounded-tr-md shadow max-w-[80%] break-words font-medium text-sm"
-                          : msg.sender === "partner"
-                            ? "bg-[#1c293d] text-cyan-100 px-4 py-2 rounded-2xl rounded-tl-md shadow max-w-[80%] break-words font-medium text-sm border border-[#2b3e5d]"
-                            : "text-xs text-cyan-300 bg-transparent font-semibold my-1 text-center w-full"
-                      }>
-                      {msg.text}
-                    </div>
+                    }
+                  >
+                    {msg.sender !== "system" ? (
+                      <div className="relative max-w-[80%] flex flex-col">
+                        
+                        {/* Hover Action Buttons (Reply & Emoji React) */}
+                        <div className={`absolute top-1/2 -translate-y-1/2 ${msg.sender === "me" ? "-left-16" : "-right-16"} opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-[#162235] border border-[#2b3e5d] p-1 rounded-full shadow-lg`}>
+                          <button 
+                            onClick={() => setReplyingTo(msg.text)}
+                            className="p-1 rounded-full text-slate-300 hover:text-cyan-400 cursor-pointer transition"
+                            title="Reply"
+                          >
+                            <CornerUpLeft size={13} />
+                          </button>
+                          <button 
+                            onClick={() => setActiveEmojiMenu(activeEmojiMenu === msg.id ? null : msg.id)}
+                            className="p-1 rounded-full text-slate-300 hover:text-amber-400 cursor-pointer transition"
+                            title="React"
+                          >
+                            <Smile size={13} />
+                          </button>
+                        </div>
+
+                        {/* Floating Emoji Picker Popup */}
+                        {activeEmojiMenu === msg.id && (
+                          <div className={`absolute z-20 -top-12 ${msg.sender === "me" ? "right-0" : "left-0"} bg-[#19263a] border border-[#2e456b] shadow-2xl rounded-full px-2 py-1 flex items-center gap-1.5 animate-in fade-in zoom-in duration-150`}>
+                            {EMOJI_LIST.map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={() => addReaction(msg.id, emoji)}
+                                className="hover:scale-125 transition text-base cursor-pointer px-0.5"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Message Bubble */}
+                        <div
+                          className={
+                            msg.sender === "me"
+                              ? "bg-cyan-400 text-slate-950 px-4 py-2 rounded-2xl rounded-tr-md shadow font-medium text-sm break-words relative"
+                              : "bg-[#1c293d] text-cyan-100 px-4 py-2 rounded-2xl rounded-tl-md shadow font-medium text-sm border border-[#2b3e5d] break-words relative"
+                          }
+                        >
+                          {msg.replyTo && (
+                            <div className={`mb-1.5 p-1.5 rounded-lg text-xs border-l-2 ${msg.sender === "me" ? "bg-cyan-600/20 border-slate-950 text-slate-900" : "bg-black/30 border-cyan-400 text-cyan-300"}`}>
+                              <p className="font-semibold text-[10px] opacity-70">Reply to message</p>
+                              <p className="truncate">{msg.replyTo}</p>
+                            </div>
+                          )}
+                          {msg.text}
+
+                          {/* Reactions Display Badge */}
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                            <div className={`absolute -bottom-2.5 ${msg.sender === "me" ? "right-2" : "left-2"} flex items-center gap-1 bg-[#131d2e] border border-[#2b3e5d] px-2 py-0.5 rounded-full shadow text-xs`}>
+                              {Object.entries(msg.reactions).map(([emoji, count]) => (
+                                <span key={emoji} className="flex items-center gap-0.5 text-[11px]">
+                                  {emoji} <span className="text-slate-300 font-semibold text-[10px]">{count}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    ) : (
+                      <div className="text-xs text-cyan-300 bg-transparent font-semibold my-1 text-center w-full">
+                        {msg.text}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
               {/* Bottom Actions & Input */}
               <div className="flex-shrink-0 bg-[#0e1624] border-t border-[#233351] p-2.5 sm:p-3 flex flex-col gap-2">
+                
+                {replyingTo && (
+                  <div className="flex items-center justify-between bg-[#172338] border-l-4 border-cyan-400 px-3 py-1.5 rounded-r-xl text-xs text-cyan-100 shadow">
+                    <div className="truncate">
+                      <span className="text-[10px] text-cyan-400 block font-bold">Replying to message</span>
+                      <span className="truncate">{replyingTo}</span>
+                    </div>
+                    <button 
+                      onClick={() => setReplyingTo(null)}
+                      className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex w-full gap-2">
                   <button
                     className="flex-1 bg-green-500 hover:bg-green-600 transition font-bold text-slate-950 py-2.5 px-3 rounded-xl shadow active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1 cursor-pointer"
@@ -273,7 +415,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#172338] text-cyan-100 border border-[#2a3c5c] focus:outline-none text-sm placeholder:text-slate-400 shadow"
                     value={input}
                     onChange={e => setInput(e.target.value)}
-                    placeholder="Type a message..."
+                    placeholder={replyingTo ? "Type your reply..." : "Type a message..."}
                     disabled={status !== "chatting"}
                     maxLength={1000}
                   />
