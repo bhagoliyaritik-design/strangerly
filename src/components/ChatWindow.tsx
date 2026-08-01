@@ -10,7 +10,7 @@ type MessageObj = {
   sender: "me" | "partner" | "system";
   text: string;
   replyTo?: string;
-  reactions: { [emoji: string]: number }; // e.g. { "❤️": 1, "😂": 2 }
+  reactions: { [emoji: string]: number };
 };
 
 export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
@@ -21,7 +21,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
   const [showPaywall, setShowPaywall] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<"1h" | "3h" | "1d">("3h");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
-  const [activeEmojiMenu, setActiveEmojiMenu] = useState<string | null>(null); // Kis message par emoji popup khula hai
+  const [activeEmojiMenu, setActiveEmojiMenu] = useState<string | null>(null);
 
   const chatRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -59,7 +59,6 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
       setMessages(m => [...m, { id: msgId, sender: "partner", text: message, replyTo, reactions: {} }]);
     });
 
-    // Reaction receive hone par update karein
     s.on("message_reaction", ({ messageId, emoji }: { messageId: string, emoji: string }) => {
       setMessages(m => m.map(msg => {
         if (msg.id === messageId) {
@@ -134,7 +133,6 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
   };
 
   const addReaction = (msgId: string, emoji: string) => {
-    // Local state update
     setMessages(m => m.map(msg => {
       if (msg.id === msgId) {
         const updatedReactions = { ...msg.reactions };
@@ -144,7 +142,6 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
       return msg;
     }));
 
-    // Server ko emit karein taaki samne wale ko bhi dikhe
     if (socketRef.current && roomId) {
       socketRef.current.emit("message_reaction", { roomId, messageId: msgId, emoji });
     }
@@ -294,41 +291,39 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
                     key={msg.id}
                     className={
                       msg.sender === "me"
-                        ? "flex w-full justify-end group relative"
+                        ? "flex w-full justify-end relative my-1"
                         : msg.sender === "partner"
-                          ? "flex w-full justify-start group relative"
+                          ? "flex w-full justify-start relative my-1"
                           : "flex w-full justify-center"
                     }
                   >
                     {msg.sender !== "system" ? (
-                      <div className="relative max-w-[80%] flex flex-col">
+                      <div className="relative max-w-[85%] sm:max-w-[80%] flex flex-col">
                         
-                        {/* Hover Action Buttons (Reply & Emoji React) */}
-                        <div className={`absolute top-1/2 -translate-y-1/2 ${msg.sender === "me" ? "-left-16" : "-right-16"} opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-[#162235] border border-[#2b3e5d] p-1 rounded-full shadow-lg`}>
+                        {/* Mobile & Desktop Action Buttons (Always visible on mobile tap/hover) */}
+                        <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-slate-400">
                           <button 
                             onClick={() => setReplyingTo(msg.text)}
-                            className="p-1 rounded-full text-slate-300 hover:text-cyan-400 cursor-pointer transition"
-                            title="Reply"
+                            className="flex items-center gap-0.5 hover:text-cyan-400 cursor-pointer bg-[#162235] px-2 py-0.5 rounded-md border border-[#2b3e5d]"
                           >
-                            <CornerUpLeft size={13} />
+                            <CornerUpLeft size={11} /> Reply
                           </button>
                           <button 
                             onClick={() => setActiveEmojiMenu(activeEmojiMenu === msg.id ? null : msg.id)}
-                            className="p-1 rounded-full text-slate-300 hover:text-amber-400 cursor-pointer transition"
-                            title="React"
+                            className="flex items-center gap-0.5 hover:text-amber-400 cursor-pointer bg-[#162235] px-2 py-0.5 rounded-md border border-[#2b3e5d]"
                           >
-                            <Smile size={13} />
+                            <Smile size={11} /> React
                           </button>
                         </div>
 
-                        {/* Floating Emoji Picker Popup */}
+                        {/* Emoji Picker Popup */}
                         {activeEmojiMenu === msg.id && (
-                          <div className={`absolute z-20 -top-12 ${msg.sender === "me" ? "right-0" : "left-0"} bg-[#19263a] border border-[#2e456b] shadow-2xl rounded-full px-2 py-1 flex items-center gap-1.5 animate-in fade-in zoom-in duration-150`}>
+                          <div className="absolute z-20 top-7 bg-[#19263a] border border-[#2e456b] shadow-2xl rounded-xl p-2 flex flex-wrap items-center gap-2 w-max max-w-[240px]">
                             {EMOJI_LIST.map((emoji) => (
                               <button
                                 key={emoji}
                                 onClick={() => addReaction(msg.id, emoji)}
-                                className="hover:scale-125 transition text-base cursor-pointer px-0.5"
+                                className="hover:scale-125 transition text-lg cursor-pointer"
                               >
                                 {emoji}
                               </button>
