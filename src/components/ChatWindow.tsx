@@ -54,16 +54,16 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
       setActiveEmojiMenu(null);
     });
 
-    s.on("chat_message", ({ id, message, replyTo }: { id?: string, message: string, replyTo?: string }) => {
-      const msgId = id || Math.random().toString(36).substr(2, 9);
-      setMessages(m => [...m, { id: msgId, sender: "partner", text: message, replyTo, reactions: {} }]);
+    s.on("chat_message", (data: { id?: string, message: string, replyTo?: string }) => {
+      const msgId = data.id || Math.random().toString(36).substr(2, 9);
+      setMessages(m => [...m, { id: msgId, sender: "partner", text: data.message, replyTo: data.replyTo, reactions: {} }]);
     });
 
-    s.on("message_reaction", ({ messageId, emoji }: { messageId: string, emoji: string }) => {
+    s.on("message_reaction", (data: { messageId: string, emoji: string }) => {
       setMessages(m => m.map(msg => {
-        if (msg.id === messageId) {
+        if (msg.id === data.messageId) {
           const updatedReactions = { ...msg.reactions };
-          updatedReactions[emoji] = (updatedReactions[emoji] || 0) + 1;
+          updatedReactions[data.emoji] = (updatedReactions[data.emoji] || 0) + 1;
           return { ...msg, reactions: updatedReactions };
         }
         return msg;
@@ -120,12 +120,14 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
     if (input.trim() === "" || !roomId || !socketRef.current) return;
     
     const msgId = Math.random().toString(36).substr(2, 9);
-    socketRef.current.emit("chat_message", { 
+    const messageData = { 
       id: msgId,
       roomId, 
       message: input, 
       replyTo: replyingTo 
-    });
+    };
+
+    socketRef.current.emit("chat_message", messageData);
 
     setMessages(m => [...m, { id: msgId, sender: "me", text: input, replyTo: replyingTo || undefined, reactions: {} }]);
     setInput("");
@@ -183,7 +185,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
     if (typeof onLeave === "function") onLeave();
   };
 
-  const handleRazorpayPayment = () => {
+  const handleRazorpayPayment = async () => {
     const plansData = {
       "1h": { amount: 199 * 100, name: "1 Hour Premium Pass" },
       "3h": { amount: 299 * 100, name: "3 Hours Premium Pass" },
@@ -192,30 +194,72 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
 
     const currentPlan = plansData[selectedPlan];
 
-    const options = {
-      key: "rzp_test_TJk6JTmSVnNpPj",
-      amount: currentPlan.amount,
-      currency: "INR",
-      name: "Strangerly",
-      description: currentPlan.name,
-      handler: function (response: any) {
-        alert("Payment Successful! Payment ID: " + response.razorpay_payment_id);
-        setShowPaywall(false);
-      },
-      prefill: {
-        name: "Strangerly User",
-        email: "user@strangerly.app",
-      },
-      theme: {
-        color: "#00f0ff",
-      },
-    };
+    try {
+      const res = await fetch("/api/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: currentPlan.amount,
+          currency: "INR",
+          receipt: "rcpt_" + selectedPlan + "_" + Date.now(),
+        }),
+      });
 
-    if (typeof window !== "undefined" && (window as any).Razorpay) {
-      const rzp = new (window as any).Razorpay(options);
-      rzp.open();
-    } else {
-      alert("Razorpay SDK script is missing in layout.");
+      const orderData = await res.json();
+      if (!res.ok) {
+        alert("Error creating order: " + (orderData.error || "Unknown error"));
+        return;
+      }
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_TKRqzJZpanXoiS",
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "Strangerly",
+        description: currentPlan.name,
+        order_id: orderData.order_id,
+        handler: async function (response: any) {
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok && verifyData.success) {
+              alert("Payment Successful & Verified! ID: " + response.razorpay_payment_id);
+              setShowPaywall(false);
+            } else {
+              alert("Payment verification failed: " + (verifyData.error || "Signature mismatch"));
+            }
+          } catch (err) {
+            console.error("Verification error:", err);
+            alert("An error occurred during payment verification.");
+          }
+        },
+        prefill: {
+          name: "Strangerly User",
+          email: "user@strangerly.app",
+        },
+        theme: {
+          color: "#00f0ff",
+        },
+      };
+
+      if (typeof window !== "undefined" && (window as any).Razorpay) {
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } else {
+        alert("Razorpay SDK script is missing.");
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      alert("Could not initiate payment.");
     }
   };
 
@@ -291,46 +335,15 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
                     key={msg.id}
                     className={
                       msg.sender === "me"
-                        ? "flex w-full justify-end relative my-1"
+                        ? "flex w-full justify-end relative my-2 group"
                         : msg.sender === "partner"
-                          ? "flex w-full justify-start relative my-1"
+                          ? "flex w-full justify-start relative my-2 group"
                           : "flex w-full justify-center"
                     }
                   >
                     {msg.sender !== "system" ? (
-                      <div className="relative max-w-[85%] sm:max-w-[80%] flex flex-col">
+                      <div className={`relative max-w-[85%] sm:max-w-[80%] flex flex-col ${msg.sender === "me" ? "items-end" : "items-start"}`}>
                         
-                        {/* Mobile & Desktop Action Buttons (Always visible on mobile tap/hover) */}
-                        <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-slate-400">
-                          <button 
-                            onClick={() => setReplyingTo(msg.text)}
-                            className="flex items-center gap-0.5 hover:text-cyan-400 cursor-pointer bg-[#162235] px-2 py-0.5 rounded-md border border-[#2b3e5d]"
-                          >
-                            <CornerUpLeft size={11} /> Reply
-                          </button>
-                          <button 
-                            onClick={() => setActiveEmojiMenu(activeEmojiMenu === msg.id ? null : msg.id)}
-                            className="flex items-center gap-0.5 hover:text-amber-400 cursor-pointer bg-[#162235] px-2 py-0.5 rounded-md border border-[#2b3e5d]"
-                          >
-                            <Smile size={11} /> React
-                          </button>
-                        </div>
-
-                        {/* Emoji Picker Popup */}
-                        {activeEmojiMenu === msg.id && (
-                          <div className="absolute z-20 top-7 bg-[#19263a] border border-[#2e456b] shadow-2xl rounded-xl p-2 flex flex-wrap items-center gap-2 w-max max-w-[240px]">
-                            {EMOJI_LIST.map((emoji) => (
-                              <button
-                                key={emoji}
-                                onClick={() => addReaction(msg.id, emoji)}
-                                className="hover:scale-125 transition text-lg cursor-pointer"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
                         {/* Message Bubble */}
                         <div
                           className={
@@ -349,7 +362,7 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
 
                           {/* Reactions Display Badge */}
                           {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div className={`absolute -bottom-2.5 ${msg.sender === "me" ? "right-2" : "left-2"} flex items-center gap-1 bg-[#131d2e] border border-[#2b3e5d] px-2 py-0.5 rounded-full shadow text-xs`}>
+                            <div className="absolute -bottom-2.5 right-2 flex items-center gap-1 bg-[#131d2e] border border-[#2b3e5d] px-2 py-0.5 rounded-full shadow text-xs">
                               {Object.entries(msg.reactions).map(([emoji, count]) => (
                                 <span key={emoji} className="flex items-center gap-0.5 text-[11px]">
                                   {emoji} <span className="text-slate-300 font-semibold text-[10px]">{count}</span>
@@ -358,6 +371,37 @@ export default function ChatWindow({ onLeave }: { onLeave: () => void }) {
                             </div>
                           )}
                         </div>
+
+                        {/* Action buttons (Reply & React) nicely placed below the bubble */}
+                        <div className="flex items-center gap-2 mt-1 px-1 text-[11px] text-slate-400 opacity-80 hover:opacity-100">
+                          <button 
+                            onClick={() => setReplyingTo(msg.text)}
+                            className="flex items-center gap-1 hover:text-cyan-400 cursor-pointer bg-[#162235]/80 px-2 py-0.5 rounded-md border border-[#2b3e5d]"
+                          >
+                            <CornerUpLeft size={10} /> Reply
+                          </button>
+                          <button 
+                            onClick={() => setActiveEmojiMenu(activeEmojiMenu === msg.id ? null : msg.id)}
+                            className="flex items-center gap-1 hover:text-amber-400 cursor-pointer bg-[#162235]/80 px-2 py-0.5 rounded-md border border-[#2b3e5d]"
+                          >
+                            <Smile size={10} /> React
+                          </button>
+                        </div>
+
+                        {/* Emoji Picker Popup */}
+                        {activeEmojiMenu === msg.id && (
+                          <div className="absolute z-25 top-full mt-1 bg-[#19263a] border border-[#2e456b] shadow-2xl rounded-xl p-2 flex flex-wrap items-center gap-2 w-max max-w-[240px]">
+                            {EMOJI_LIST.map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={() => addReaction(msg.id, emoji)}
+                                className="hover:scale-125 transition text-lg cursor-pointer"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                       </div>
                     ) : (
